@@ -55,7 +55,9 @@
         <div class="input-group">
             <h3>Option 1: Connect to Google Sheet</h3>
             <p style="color:#ccc; font-size:0.9rem;">Paste the "Publish to Web" CSV link here.</p>
-            <input type="text" id="sheetUrl" placeholder="https://docs.google.com/spreadsheets/d/.../export?format=csv">
+            <input type="text" id="sheetUrl" 
+                   value="https://docs.google.com/spreadsheets/d/e/2PACX-1vRLM98_9CCgB7fhXENTibYSnfLDQUM0fybIwBNGJs2Cwvszht7tOwd8dYHNgIr9T5jFFTFcGwjORMVq/pub?gid=1834281979&single=true&output=csv" 
+                   placeholder="https://docs.google.com/spreadsheets/d/.../export?format=csv">
             <button onclick="fetchGoogleSheet()">FETCH DATA</button>
         </div>
 
@@ -258,3 +260,4 @@
     </script>
 </body>
 </html>
+
