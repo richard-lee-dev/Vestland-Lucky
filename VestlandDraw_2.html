@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vestland 2026 Lucky Draw (Connected)</title>
+    <style>
+        :root { --gold: #f0c420; --dark-blue: #0a1a3a; --accent-red: #b21f1f; }
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, var(--dark-blue) 0%, #2c1e4a 50%, var(--accent-red) 100%);
+            color: white; height: 100vh; margin: 0;
+            display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden;
+        }
+        h1, h2 { color: var(--gold); text-transform: uppercase; margin: 0; text-shadow: 0 0 10px rgba(240, 196, 32, 0.5); }
+        .container { display: none; text-align: center; width: 90%; max-width: 1200px; animation: fadeIn 0.5s ease; }
+        .active { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; }
+        
+        /* Setup Screen Styles */
+        #setup-view { background: rgba(0,0,0,0.95); z-index: 100; justify-content: flex-start; padding-top: 50px; overflow-y: auto; }
+        .input-group { background: #222; padding: 20px; border-radius: 10px; margin-bottom: 20px; width: 80%; border: 1px solid #444; }
+        input[type="text"] { width: 70%; padding: 10px; font-size: 1rem; background: #000; color: var(--gold); border: 1px solid var(--gold); }
+        .or-divider { font-size: 1.5rem; color: #666; margin: 10px 0; font-weight: bold; }
+        
+        button {
+            background: linear-gradient(to bottom, var(--gold), #d4a810);
+            border: 2px solid #fff; color: var(--dark-blue); padding: 15px 40px; font-size: 1.2rem;
+            font-weight: bold; cursor: pointer; border-radius: 50px; margin: 10px; transition: transform 0.2s;
+        }
+        button:hover { transform: scale(1.05); }
+        button:disabled { filter: grayscale(1); cursor: not-allowed; }
+
+        /* Draw Screen Styles */
+        .category-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; width: 80%; margin-top: 20px; }
+        .cat-btn { background: rgba(255,255,255,0.1); border: 1px solid var(--gold); color: white; border-radius: 10px; padding: 15px; display: flex; flex-direction: column; }
+        
+        #draw-display-box {
+            background: rgba(0,0,0,0.6); border: 3px solid var(--gold); border-radius: 20px;
+            padding: 40px; width: 70%; min-height: 250px; margin: 30px 0;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+        }
+        .winner-name { font-size: 3.5rem; color: var(--gold); font-weight: 800; line-height: 1.1; }
+        .winner-details { font-size: 1.5rem; margin-top: 10px; opacity: 0.9; }
+
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .winner-reveal { animation: pulse 0.5s ease-in-out; }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
+    </style>
+</head>
+<body>
+
+    <div id="setup-view" class="container active">
+        <h2>System Setup</h2>
+        
+        <div class="input-group">
+            <h3>Option 1: Connect to Google Sheet</h3>
+            <p style="color:#ccc; font-size:0.9rem;">Paste the "Publish to Web" CSV link here.</p>
+            <input type="text" id="sheetUrl" placeholder="https://docs.google.com/spreadsheets/d/.../export?format=csv">
+            <button onclick="fetchGoogleSheet()">FETCH DATA</button>
+        </div>
+
+        <div class="or-divider">- OR -</div>
+
+        <div class="input-group">
+            <h3>Option 2: Paste Data Manually</h3>
+            <p style="color:#ccc; font-size:0.9rem;">Copy columns: Name | Company | Phone</p>
+            <textarea id="pasteArea" style="width:90%; height:100px; background:#000; color:var(--gold); padding:10px;" placeholder="John Doe    Vestland    012-345"></textarea>
+            <br>
+            <button onclick="parseManualData()">LOAD PASTED DATA</button>
+        </div>
+    </div>
+
+    <div id="intro-view" class="container">
+        <h1 style="font-size: 4rem; margin-bottom: 20px;">LUCKY DRAW</h1>
+        <h2 id="count-display">0 Participants Loaded</h2>
+        <br><br>
+        <button onclick="switchView('categories-view')">START EVENT</button>
+    </div>
+
+    <div id="categories-view" class="container">
+        <h2>Select Category</h2>
+        <div class="category-grid" id="category-container"></div>
+        <br>
+        <button onclick="if(confirm('Reset?')) location.reload();" style="font-size:1rem; background:transparent; color:white; border:1px solid #666;">Reset</button>
+    </div>
+
+    <div id="draw-view" class="container">
+        <h2 id="cat-title">PRIZE</h2>
+        <div id="draw-display-box">
+            <div class="winner-name" id="disp-name">READY</div>
+            <div class="winner-details" id="disp-company"></div>
+            <div class="winner-details" id="disp-phone" style="font-size:1.2rem; color:#aaa;"></div>
+        </div>
+        <button id="spinBtn" onclick="toggleSpin()">SPIN</button>
+        <br><br>
+        <button id="backBtn" onclick="switchView('categories-view')" style="background:transparent; border:1px solid white; color:white; font-size:1rem;">Back</button>
+    </div>
+
+    <script>
+        let participants = [];
+        let winners = new Set();
+        let categories = {
+            'grand': { title: "GRAND PRIZE", count: 1, drawn: 0 },
+            '1st': { title: "1st Prize", count: 3, drawn: 0 },
+            '2nd': { title: "2nd Prize", count: 5, drawn: 0 },
+            'cons': { title: "Consolation", count: 10, drawn: 0 }
+        };
+        let currentCat = null;
+        let spinning = false;
+        let timer = null;
+
+        function switchView(id) {
+            document.querySelectorAll('.container').forEach(d => d.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+            if(id === 'categories-view') renderCategories();
+        }
+
+        // --- DATA FETCHING ---
+        async function fetchGoogleSheet() {
+            const url = document.getElementById('sheetUrl').value.trim();
+            if(!url) return alert("Please enter a URL");
+            
+            try {
+                const response = await fetch(url);
+                if(!response.ok) throw new Error("Network error");
+                const text = await response.text();
+                parseCSV(text);
+            } catch (e) {
+                alert("Error fetching data! \n\nNOTE: Browsers block 'File' to 'Web' connections.\nTry running this HTML on a local server or use Option 2 (Paste).");
+                console.error(e);
+            }
+        }
+
+        function parseManualData() {
+            const text = document.getElementById('pasteArea').value;
+            // Handle tab-separated (Excel copy)
+            const rows = text.split('\n').map(row => row.split('\t'));
+            processRows(rows);
+        }
+
+        function parseCSV(text) {
+            // Simple CSV parser (handles commas)
+            const rows = text.split('\n').map(row => row.split(','));
+            processRows(rows);
+        }
+
+        function processRows(rows) {
+            participants = [];
+            rows.forEach(row => {
+                // Adjust indices based on your data. Assuming: [Timestamp, Name, Company, Phone]
+                // If manual paste: [Name, Company, Phone]
+                
+                // Detection logic: Find the first "phone-like" column or just grab indexes
+                // Let's assume Google Form CSV order: Timestamp (0), Name (1), Company (2), Phone (3)
+                // Let's assume Manual Paste order: Name (0), Company (1), Phone (2)
+                
+                let pName, pComp, pPhone;
+
+                if (row.length >= 3) {
+                    // Cleanup quotes from CSV
+                    const clean = (s) => s ? s.replace(/['"]+/g, '').trim() : "";
+
+                    if (row[0].includes(':') || row[0].includes('/')) { 
+                        // Likely a timestamp in col 0, so data is 1, 2, 3
+                        pName = clean(row[1]);
+                        pComp = clean(row[2]);
+                        pPhone = clean(row[3]);
+                    } else {
+                        // Manual paste
+                        pName = clean(row[0]);
+                        pComp = clean(row[1]);
+                        pPhone = clean(row[2]);
+                    }
+
+                    if (pName && pPhone) {
+                        participants.push({ name: pName, company: pComp, phone: pPhone });
+                    }
+                }
+            });
+
+            if(participants.length > 0) {
+                document.getElementById('count-display').innerText = participants.length + " Participants Ready";
+                switchView('intro-view');
+            } else {
+                alert("No valid data found. Check column order.");
+            }
+        }
+
+        // --- GAME LOGIC ---
+        function renderCategories() {
+            const c = document.getElementById('category-container');
+            c.innerHTML = '';
+            for(let k in categories) {
+                let cat = categories[k];
+                let rem = cat.count - cat.drawn;
+                let btn = document.createElement('div');
+                btn.className = 'cat-btn';
+                btn.innerHTML = `<strong>${cat.title}</strong><span style="font-size:1.5rem">${rem} Left</span>`;
+                btn.onclick = () => {
+                    if(rem > 0) { currentCat = k; setupDraw(); }
+                };
+                if(rem === 0) btn.style.opacity = 0.5;
+                c.appendChild(btn);
+            }
+        }
+
+        function setupDraw() {
+            document.getElementById('cat-title').innerText = categories[currentCat].title;
+            document.getElementById('disp-name').innerText = "READY";
+            document.getElementById('disp-company').innerText = "";
+            document.getElementById('disp-phone').innerText = "";
+            document.getElementById('spinBtn').disabled = false;
+            switchView('draw-view');
+        }
+
+        function toggleSpin() {
+            const btn = document.getElementById('spinBtn');
+            const eligible = participants.filter(p => !winners.has(p.phone));
+
+            if(eligible.length === 0) return alert("Everyone has won!");
+
+            if(!spinning) {
+                spinning = true;
+                btn.innerText = "STOP";
+                btn.style.background = "var(--accent-red)";
+                document.getElementById('backBtn').disabled = true;
+                
+                timer = setInterval(() => {
+                    let r = eligible[Math.floor(Math.random() * eligible.length)];
+                    document.getElementById('disp-name').innerText = r.name;
+                    document.getElementById('disp-company').innerText = r.company;
+                    document.getElementById('disp-phone').innerText = "Scrambling...";
+                }, 50);
+            } else {
+                clearInterval(timer);
+                spinning = false;
+                btn.innerText = "SPIN";
+                btn.style.background = "";
+                document.getElementById('backBtn').disabled = false;
+
+                let winner = eligible[Math.floor(Math.random() * eligible.length)];
+                winners.add(winner.phone);
+                categories[currentCat].drawn++;
+
+                document.getElementById('disp-name').innerText = winner.name;
+                document.getElementById('disp-company').innerText = winner.company;
+                document.getElementById('disp-phone').innerText = winner.phone;
+                document.getElementById('draw-display-box').classList.add('winner-reveal');
+                
+                setTimeout(() => document.getElementById('draw-display-box').classList.remove('winner-reveal'), 1000);
+                
+                if(categories[currentCat].drawn >= categories[currentCat].count) {
+                    btn.disabled = true;
+                    setTimeout(() => alert("Category Completed!"), 500);
+                }
+            }
+        }
+    </script>
+</body>
+</html>
